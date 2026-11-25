@@ -1,0 +1,174 @@
+@page "/tasks"
+@inject PortalApiClient Api
+
+<PageTitle>Tasks</PageTitle>
+<h1 class="page-title">Tasks</h1>
+<p class="page-sub">Assign and follow up on project tasks.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Task</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Task Title<InputText @bind-Value="model.Title" /><ValidationMessage For="() => model.Title" /></label>
+                <label>Project<InputSelect @bind-Value="model.Project">@foreach (var o in ProjectOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Project" /></label>
+                <label>Assignee<InputSelect @bind-Value="model.Assignee">@foreach (var o in AssigneeOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Assignee" /></label>
+                <label>Priority<InputSelect @bind-Value="model.Priority">@foreach (var o in PriorityOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Priority" /></label>
+                <label>Due Date<InputDate @bind-Value="model.DueDate" /><ValidationMessage For="() => model.DueDate" /></label>
+                <label>Estimate (hrs)<InputNumber @bind-Value="model.EstimateHours" /><ValidationMessage For="() => model.EstimateHours" /></label>
+                <label>Status<InputSelect @bind-Value="model.Status">@foreach (var o in StatusOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Status" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Task List</h2>
+            <input class="search" placeholder="Search..." aria-label="Search tasks" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Task</th><th>Assignee</th><th>Priority</th><th>Due</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                        @foreach (var r in Rows)
+
+                        {
+                            <tr>
+                                <td>@r.Title</td>
+                                <td>@r.Assignee</td>
+                                <td>
+                                    <span class="task-badge @PriorityClass(r.Priority)">
+                                        @r.Priority
+                                    </span>
+                                </td>
+                                <td>@r.DueDate.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    <span class="task-badge @StatusClass(r.Status)">
+                                        @r.Status
+                                    </span>
+                                </td>
+                                <td class="row-actions">
+                                    <button class="link" @onclick="() => Edit(r)">Edit</button>
+                                    <button class="link danger"
+                                            disabled="@busy"
+                                            @onclick="() => DeleteAsync(r)">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Open</span><strong>@(items.Count(x => x.Status == "Open"))</strong></div>
+                <div><span>In progress</span><strong>@(items.Count(x => x.Status == "In Progress"))</strong></div>
+                <div><span>Done</span><strong>@(items.Count(x => x.Status == "Done"))</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<TaskItem>? _data;
+    private TaskItem model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<TaskItem> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.Title, x.Project, x.Assignee, x.Priority, x.Status }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<TaskItem>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(TaskItem x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<TaskItem>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(TaskItem x) => model = (TaskItem)x.Copy();
+    private void Reset() => model = new();
+
+
+
+
+    private static string PriorityClass(string? priority) =>
+
+        priority?.Trim().ToLowerInvariant() switch
+
+        {
+
+            "high" => "priority-high",
+
+            "medium" => "priority-medium",
+
+            "low" => "priority-low",
+
+            _ => "badge-default"
+
+        };
+
+
+
+    private static string StatusClass(string? status) =>
+
+        status?.Trim().ToLowerInvariant() switch
+
+        {
+
+            "open" => "status-open",
+
+            "in progress" => "status-progress",
+
+            "done" => "status-done",
+
+            _ => "badge-default"
+
+        };
+
+
+
+
+
+    private static readonly string[] ProjectOptions = { "IT Infrastructure Upgrade", "Cloud Migration", "Security Enhancement", "Digital Workplace" };
+    private static readonly string[] AssigneeOptions = { "Michael Brown", "Sarah Johnson", "David Wilson", "Lisa Taylor", "Jane Smith", "John Smith" };
+    private static readonly string[] PriorityOptions = { "High", "Medium", "Low" };
+    private static readonly string[] StatusOptions = { "Open", "In Progress", "Done" };
+}

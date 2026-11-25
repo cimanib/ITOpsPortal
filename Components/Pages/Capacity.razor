@@ -1,0 +1,109 @@
+@page "/capacity"
+@inject PortalApiClient Api
+
+<PageTitle>Capacity</PageTitle>
+<h1 class="page-title">Capacity</h1>
+<p class="page-sub">Allocate people to projects and spot overload.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Allocation</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Team Member<InputSelect @bind-Value="model.Member">@foreach (var o in MemberOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Member" /></label>
+                <label>Project<InputSelect @bind-Value="model.Project">@foreach (var o in ProjectOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Project" /></label>
+                <label>Role<InputText @bind-Value="model.Role" /><ValidationMessage For="() => model.Role" /></label>
+                <label>Allocation (%)<InputNumber @bind-Value="model.Allocation" /><ValidationMessage For="() => model.Allocation" /></label>
+                <label>From<InputDate @bind-Value="model.FromDate" /><ValidationMessage For="() => model.FromDate" /></label>
+                <label>To<InputDate @bind-Value="model.ToDate" /><ValidationMessage For="() => model.ToDate" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Team Capacity</h2>
+            <input class="search" placeholder="Search..." aria-label="Search capacity" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Team Member</th><th>Project</th><th>Allocated</th><th>Available</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.Member</td><td>@r.Project</td><td>@r.Allocation%</td><td>@r.Available%</td><td>@r.Status</td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Team size</span><strong>@(items.Select(x => x.Member).Distinct().Count())</strong></div>
+                <div><span>Overloaded</span><strong>@(items.Count(x => x.Status == "Overloaded"))</strong></div>
+                <div><span>Avg load</span><strong>@((items.Count == 0 ? 0 : (int)items.Average(x => x.Allocation)) + "%")</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<CapacityAllocation>? _data;
+    private CapacityAllocation model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<CapacityAllocation> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.Member, x.Project, x.Role }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<CapacityAllocation>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(CapacityAllocation x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<CapacityAllocation>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(CapacityAllocation x) => model = (CapacityAllocation)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] MemberOptions = { "Michael Brown", "Sarah Johnson", "David Wilson", "Lisa Taylor", "Jane Smith", "John Smith" };
+    private static readonly string[] ProjectOptions = { "IT Infrastructure Upgrade", "Cloud Migration", "Security Enhancement", "Digital Workplace" };
+}

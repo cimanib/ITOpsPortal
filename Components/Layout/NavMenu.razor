@@ -1,0 +1,101 @@
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using ITOpsPortal.Services
+@inject PortalApiClient Api
+@inject NavigationManager Nav
+
+<aside class="sidebar">
+    <div class="brand">
+        <Icon Name="monitor" Size="26" />
+        <span>IT Ops Portal</span>
+    </div>
+
+    <nav class="nav">
+        @foreach (var item in _items)
+
+        {
+            <NavLink class="nav-link" href="@item.Href" Match="@(item.Href == "" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                <Icon Name="@item.Icon" Size="19" />
+                <span>@item.Label</span>
+                @if (item.Href == "alerts" && _unread > 0)
+                {
+                    <span class="nav-badge">@_unread</span>
+                }
+            </NavLink>
+        }
+    </nav>
+
+    <AuthorizeView>
+        <Authorized Context="auth">
+            <div class="sidebar-user">
+                <span class="avatar lg">@UserDisplay.Initials(auth.User)</span>
+                <div>
+                    <strong>@UserDisplay.Name(auth.User)</strong>
+                    <small>@UserDisplay.Role(auth.User)</small>
+                    <small class="online"><i></i>Online</small>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+</aside>
+
+@code {
+    private record NavItem(string Label, string Icon, string Href);
+
+
+
+    private static readonly NavItem[] _items =
+
+    {
+        new("Dashboard",    "home",      ""),
+        new("Projects",     "briefcase", "projects"),
+        new("Tasks",        "list",      "tasks"),
+        new("Capacity",     "users",     "capacity"),
+        new("Service Desk", "headset",   "service-desk"),
+        new("Security",     "shield",    "security"),
+        new("Renewals",     "calendar",  "renewals"),
+        new("Reports",      "file-text", "reports"),
+        new("Alerts",       "bell",      "alerts"),
+        new("Users",        "user",      "users"),
+        new("Settings",     "settings",  "settings"),
+    };
+
+
+
+    private int _unread;
+
+
+    protected override async Task OnInitializedAsync()
+
+    {
+
+        Nav.LocationChanged += OnLocationChanged;
+
+        await RefreshAsync();
+
+    }
+
+
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+
+    {
+
+        await RefreshAsync();
+
+        await InvokeAsync(StateHasChanged);
+
+    }
+
+    private async Task RefreshAsync()
+
+    {
+
+        try { _unread = (await Api.GetDashboardAsync()).UnreadAlerts; }
+
+        catch (ApiException) { _unread = 0; }
+
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

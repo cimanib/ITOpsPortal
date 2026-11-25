@@ -1,0 +1,255 @@
+@page "/"
+@using System.Globalization
+@using ItOpsPortal.Services
+@inject PortalApiClient Api
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="dh-head">
+    <div>
+        <h1 class="dh-title">Dashboard</h1>
+        <p class="dh-sub">Overview of IT operations and key metrics</p>
+    </div>
+    <div class="dh-actions">
+        <span class="dh-range">@Range @Svg("calendar", 18)</span>
+        <a class="dh-primary" href="reports">@Svg("file-text", 18) Generate Report</a>
+    </div>
+</div>
+
+@if (error is not null)
+
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+@if (s is null)
+
+{
+    <p class="muted">Loading...</p>
+}
+
+else
+
+{
+    <div class="dk-grid">
+        @Kpi("heart", "blue", "Overall IT Health", $"{s.Health}%", HealthTone, "Calculated from current risks")
+        @Kpi("briefcase", "green", "Projects", s.Projects.ToString(), Tone(s.ProjectsAtRisk, 1, 3), $"{s.ProjectsAtRisk} projects at risk")
+        @Kpi("headset", "sky", "Service Desk", s.ServiceDeskTotal.ToString(), SlaTone, $"{s.SlaCompliance}% SLA compliance")
+        @Kpi("shield", "purple", "Security", s.CriticalIssues.ToString(), Tone(s.CriticalIssues, 1, 3), $"{s.CriticalIssues} critical issues")
+        @Kpi("users", "orange", "Capacity", s.Overloaded.ToString(), Tone(s.Overloaded, 1, 4), $"{s.Overloaded} overloaded")
+        @Kpi("calendar", "green", "Renewals", s.RenewalsExpiring.ToString(), Tone(s.RenewalsExpiring, 1, 6), "Expiring in 30 days")
+    </div>
+
+    <div class="dp-row">
+        <section class="dp-card">
+            <div class="dp-head"><h2>Projects Overview</h2><a class="dp-link" href="projects">View all</a></div>
+            <table class="dp-table">
+                <thead><tr><th>Project</th><th>Owner</th><th>Progress</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var p in projects.Take(4))
+                    {
+                        <tr>
+                            <td>@p.Name</td>
+                            <td>@p.Owner</td>
+                            <td><span class="dp-pct">@p.Progress%</span><span class="dp-bar"><i style="width:@(p.Progress)%"></i></span></td>
+                            <td><span class="dp-status @StatusClass(p.Status)"><i></i>@p.Status</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        <section class="dp-card">
+            <div class="dp-head"><h2>Service Desk</h2><a class="dp-link" href="service-desk">View all</a></div>
+            <div class="dd-wrap">
+                <div class="dd-donut" style="background:@Donut"><div><strong>@s.ServiceDeskTotal</strong><span>Total Tickets</span></div></div>
+                <ul class="dd-legend">
+                    <li><i style="background:#ef4444"></i>Open<b>@s.Open</b></li>
+                    <li><i style="background:#f97316"></i>In Progress<b>@s.InProgress</b></li>
+                    <li><i style="background:#facc15"></i>On Hold<b>@s.OnHold</b></li>
+                    <li><i style="background:#22c55e"></i>Resolved<b>@s.Resolved</b></li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="dp-card">
+            <div class="dp-head"><h2>Alerts</h2><a class="dp-link" href="alerts">View all</a></div>
+            <ul class="da-list">
+                @foreach (var a in alerts.OrderByDescending(x => x.RaisedOn).Take(4))
+
+                {
+
+                    var (icon, tint) = AlertStyle(a);
+                    <li>
+                        <span class="da-ico @tint">@Svg(icon, 20)</span>
+                        <span class="da-text">@a.Title</span>
+                        <small class="da-time @(a.Severity == "Low" ? "blue" : "red")">@Fmt.Ago(a.RaisedOn)</small>
+                    </li>
+                }
+            </ul>
+        </section>
+    </div>
+}
+
+@code {
+    private DashboardSummary? s;
+
+    private List<Project> projects = new();
+
+    private List<AlertItem> alerts = new();
+
+    private string? error;
+
+
+
+    protected override async Task OnInitializedAsync()
+
+    {
+
+        try
+
+        {
+
+            var summary = Api.GetDashboardAsync();
+
+            var p = Api.ListAsync<Project>();
+
+            var a = Api.ListAsync<AlertItem>();
+
+            await Task.WhenAll(summary, p, a);
+
+            s = summary.Result; projects = p.Result; alerts = a.Result;
+
+        }
+
+        catch (ApiException ex) { error = ex.Message; }
+
+    }
+
+
+
+
+
+
+
+    private static DateTime ReportEndDate => DateTime.Today;
+
+    private static DateTime ReportStartDate => DateTime.Today;
+
+    private static string Range
+    {
+
+        get
+
+        {
+
+            var ci = CultureInfo.InvariantCulture;
+
+
+
+            return $"{ReportStartDate.ToString("d MMM", ci)} – " +
+
+               $"{ReportEndDate.ToString("d MMM yyyy", ci)}";
+
+        }
+
+    }
+
+    private static string Tone(int value, int amberAt, int redAt) => value >= redAt ? "Red" : value >= amberAt ? "Amber" : "Green";
+
+    private string HealthTone => s is null ? "Green" : s.Health >= 85 ? "Green" : s.Health >= 60 ? "Amber" : "Red";
+
+    private string SlaTone => s is null ? "Green" : s.SlaCompliance >= 90 ? "Green" : s.SlaCompliance >= 80 ? "Amber" : "Red";
+
+    private static string StatusClass(string status) => status switch { "On Track" => "ok", "At Risk" => "warn", _ => "bad" };
+
+    private static (string icon, string tint) AlertStyle(AlertItem a) => a.Trigger switch
+
+    {
+
+        "Security issue" => ("shield-alert", "red"),
+
+        "Over-allocation" => ("alert-triangle", "orange"),
+
+        "Renewal expiry" => ("info", "blue"),
+
+        _ => ("alert-triangle", "red")
+
+    };
+
+
+
+    private string Donut
+
+    {
+
+        get
+
+        {
+
+            if (s is null) return "#e2e8f0";
+
+            double t = s.Open + s.InProgress + s.OnHold + s.Resolved;
+
+            if (t == 0) return "#e2e8f0";
+
+            double a = s.Open * 100 / t, b = a + s.InProgress * 100 / t, c = b + s.OnHold * 100 / t;
+
+            string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+            return $"conic-gradient(#ef4444 0 {F(a)}%, #f97316 {F(a)}% {F(b)}%, #facc15 {F(b)}% {F(c)}%, #22c55e {F(c)}% 100%)";
+
+        }
+
+    }
+
+
+
+    private RenderFragment Kpi(string icon, string tint, string title, string value, string tone, string note) =>
+    @<div class="dk-card">
+        <span class="dk-ico @tint">@Svg(icon, 24)</span>
+        <div>
+            <div class="dk-title">@title</div>
+            <div class="dk-value">@value <span class="dk-badge @tone.ToLower()">@tone</span></div>
+            <div class="dk-note @(tone == "Green" ? "good" : "bad")">↓ @note</div>
+        </div>
+    </div>;
+
+
+
+    private static MarkupString Svg(string name, int size)
+
+    {
+
+        var p = name switch
+
+        {
+
+            "heart" => """<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><polyline points="6 12 9 12 11 9 13 15 15 12 18 12"/>""",
+
+            "briefcase" => """<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>""",
+
+            "headset" => """<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>""",
+
+            "shield" => """<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/>""",
+
+            "shield-alert" => """<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/>""",
+
+            "users" => """<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>""",
+
+            "calendar" => """<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>""",
+
+            "file-text" => """<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>""",
+
+            "alert-triangle" => """<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>""",
+
+            "info" => """<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>""",
+
+            _ => """<circle cx="12" cy="12" r="9"/>"""
+
+        };
+
+        return new MarkupString($"<svg width=\"{size}\" height=\"{size}\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">{p}</svg>");
+
+    }
+}

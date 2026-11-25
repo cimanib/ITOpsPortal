@@ -1,0 +1,5 @@
+<span class="badge @Status.ToString().ToLowerInvariant()">@Status</span>
+
+@code {
+    [Parameter, EditorRequired] public RagStatus Status { get; set; }
+}

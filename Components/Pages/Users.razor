@@ -1,0 +1,120 @@
+@page "/users"
+@inject PortalApiClient Api
+
+<PageTitle>Users</PageTitle>
+<h1 class="page-title">Users</h1>
+<p class="page-sub">Manage portal users and access.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") User</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Full Name<InputText @bind-Value="model.FullName" /><ValidationMessage For="() => model.FullName" /></label>
+                <label>Email<InputText type="email" @bind-Value="model.Email" /><ValidationMessage For="() => model.Email" /></label>
+                <label>Role<InputSelect @bind-Value="model.Role">@foreach (var o in RoleOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Role" /></label>
+                <label>Department<InputSelect @bind-Value="model.Department">@foreach (var o in DepartmentOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Department" /></label>
+                <label>Access Level<InputSelect @bind-Value="model.AccessLevel">@foreach (var o in AccessLevelOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.AccessLevel" /></label>
+                <label>Status<InputSelect @bind-Value="model.Status">@foreach (var o in StatusOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Status" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>User List</h2>
+            <input class="search" placeholder="Search..." aria-label="Search users" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Name</th><th>Role</th><th>Department</th><th>Access</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                            <tr>
+                                <td>@r.FullName</td>
+                                <td>@r.Role</td>
+                                <td>@r.Department</td>
+                                <td>@r.AccessLevel</td>
+                                <td>
+                                    <span class="task-badge(r.Status)">
+                                        @r.Status
+                                    </span>
+                                </td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Users</span><strong>@(items.Count)</strong></div>
+                <div><span>Active</span><strong>@(items.Count(x => x.Status == "Active"))</strong></div>
+                <div><span>Admins</span><strong>@(items.Count(x => x.AccessLevel == "Admin"))</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<AppUser>? _data;
+    private AppUser model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<AppUser> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.FullName, x.Email, x.Role, x.Department, x.AccessLevel, x.Status }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<AppUser>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(AppUser x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<AppUser>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(AppUser x) => model = (AppUser)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] RoleOptions = { "IT Manager", "Project Lead", "Engineer", "Analyst", "Administrator" };
+    private static readonly string[] DepartmentOptions = { "IT Operations", "Infrastructure", "Cloud", "Workplace", "Security" };
+    private static readonly string[] AccessLevelOptions = { "Admin", "Editor", "Viewer" };
+    private static readonly string[] StatusOptions = { "Active", "Inactive" };
+}

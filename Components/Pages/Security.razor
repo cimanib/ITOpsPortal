@@ -1,0 +1,112 @@
+@page "/security"
+@inject PortalApiClient Api
+
+<PageTitle>Security</PageTitle>
+<h1 class="page-title">Security</h1>
+<p class="page-sub">Log and resolve security issues.</p>
+<p class="sub-links"><a href="security/backup">Backup jobs</a> &middot; <a href="security/architecture">Backup architecture</a></p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Security Issue</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Issue Title<InputText @bind-Value="model.Title" /><ValidationMessage For="() => model.Title" /></label>
+                <label>Severity<InputSelect @bind-Value="model.Severity">@foreach (var o in SeverityOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Severity" /></label>
+                <label>Affected System<InputText @bind-Value="model.AffectedSystem" /><ValidationMessage For="() => model.AffectedSystem" /></label>
+                <label>Owner<InputSelect @bind-Value="model.Owner">@foreach (var o in OwnerOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Owner" /></label>
+                <label>Detected On<InputDate @bind-Value="model.DetectedOn" /><ValidationMessage For="() => model.DetectedOn" /></label>
+                <label>Target Fix<InputDate @bind-Value="model.TargetFix" /><ValidationMessage For="() => model.TargetFix" /></label>
+                <label>Status<InputSelect @bind-Value="model.Status">@foreach (var o in StatusOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Status" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Security Issues</h2>
+            <input class="search" placeholder="Search..." aria-label="Search security" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Issue</th><th>Severity</th><th>Owner</th><th>Target Fix</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.Title</td><td>@r.Severity</td><td>@r.Owner</td><td>@r.TargetFix.ToString("dd/MM/yyyy")</td><td>@r.Status</td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Critical open</span><strong>@(items.Count(x => x.Severity == "Critical" && x.Status != "Resolved"))</strong></div>
+                <div><span>Open</span><strong>@(items.Count(x => x.Status != "Resolved"))</strong></div>
+                <div><span>Resolved</span><strong>@(items.Count(x => x.Status == "Resolved"))</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<SecurityIssue>? _data;
+    private SecurityIssue model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<SecurityIssue> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.Title, x.Severity, x.AffectedSystem, x.Owner, x.Status }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<SecurityIssue>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(SecurityIssue x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<SecurityIssue>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(SecurityIssue x) => model = (SecurityIssue)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] SeverityOptions = { "Critical", "High", "Medium", "Low" };
+    private static readonly string[] OwnerOptions = { "Michael Brown", "Sarah Johnson", "David Wilson", "Lisa Taylor", "Jane Smith", "John Smith" };
+    private static readonly string[] StatusOptions = { "Open", "In Progress", "Resolved" };
+}

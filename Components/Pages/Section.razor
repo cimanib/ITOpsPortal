@@ -1,0 +1,14 @@
+@page "/section/{Slug}"
+
+<PageTitle>@Title · IT Ops Portal</PageTitle>
+
+<div class="placeholder">
+    <h1>@Title</h1>
+    <p>This section isn't built yet. Add a page for it under <code>Components/Pages</code> and bind it to a data service.</p>
+</div>
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private string Title => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(Slug.Replace('-', ' '));
+}

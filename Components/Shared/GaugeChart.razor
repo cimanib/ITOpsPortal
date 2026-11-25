@@ -1,0 +1,45 @@
+<svg class="gauge" viewBox="0 0 240 150" role="img" aria-label="Security score @Value out of 100">
+    @foreach (var s in Segments)
+    {
+        <path d="@Arc(s.From, s.To)" fill="none" stroke="@s.Color" stroke-width="20" />
+    }
+    @{ var (mx, my) = Point(Value / 100.0, Radius); }
+    <circle cx="@F(mx)" cy="@F(my)" r="6" fill="#fff" stroke="#10b981" stroke-width="3" />
+
+    <text x="120" y="108" text-anchor="middle" class="gauge-value">@Value%</text>
+    <text x="120" y="128" text-anchor="middle" class="gauge-label">Security Score</text>
+    <text x="@F(Cx - Radius)" y="146" text-anchor="middle" class="gauge-end">0</text>
+    <text x="@F(Cx + Radius)" y="146" text-anchor="middle" class="gauge-end">100</text>
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public int Value { get; set; }
+
+    private const double Cx = 120, Cy = 120, Radius = 90;
+
+    private record Seg(double From, double To, string Color);
+
+    // Red → orange → yellow → green, left to right.
+    private static readonly Seg[] Segments =
+    {
+        new(0.00, 0.33, "#ef4444"),
+        new(0.34, 0.62, "#f97316"),
+        new(0.63, 0.88, "#facc15"),
+        new(0.89, 1.00, "#10b981"),
+    };
+
+    private static (double x, double y) Point(double pct, double r)
+    {
+        var theta = Math.PI * (1 - pct);
+        return (Cx + r * Math.Cos(theta), Cy - r * Math.Sin(theta));
+    }
+
+    private static string Arc(double from, double to)
+    {
+        var (x1, y1) = Point(from, Radius);
+        var (x2, y2) = Point(to, Radius);
+        return $"M {F(x1)} {F(y1)} A {F(Radius)} {F(Radius)} 0 0 1 {F(x2)} {F(y2)}";
+    }
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,124 @@
+@page "/alerts"
+@using ItOpsPortal.Services
+@inject PortalApiClient Api
+
+<PageTitle>Alerts</PageTitle>
+<h1 class="page-title">Alerts</h1>
+<p class="page-sub">Raise and manage operational alerts.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Alert</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Alert Title<InputText @bind-Value="model.Title" /><ValidationMessage For="() => model.Title" /></label>
+                <label>Severity<InputSelect @bind-Value="model.Severity">@foreach (var o in SeverityOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Severity" /></label>
+                <label>Trigger<InputSelect @bind-Value="model.Trigger">@foreach (var o in TriggerOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Trigger" /></label>
+                <label>Notify<InputSelect @bind-Value="model.NotifyGroup">@foreach (var o in NotifyGroupOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.NotifyGroup" /></label>
+                <label>Channel<InputSelect @bind-Value="model.Channel">@foreach (var o in ChannelOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Channel" /></label>
+                <label>Status<InputSelect @bind-Value="model.Status">@foreach (var o in StatusOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Status" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Alert List</h2>
+            <input class="search" placeholder="Search..." aria-label="Search alerts" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Alert</th><th>Severity</th><th>Raised</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.Title</td><td>@r.Severity</td><td>@Fmt.Ago(r.RaisedOn)</td><td>@r.Status</td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Unread</span><strong>@(items.Count(x => x.Status == "New"))</strong></div>
+                <div><span>Today</span><strong>@(items.Count(x => x.RaisedOn.Date == DateTime.Today))</strong></div>
+                <div><span>Total</span><strong>@(items.Count)</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<AlertItem>? _data;
+    private AlertItem model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+
+
+    private IEnumerable<AlertItem> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+
+        string.Join(" ", new[] { x.Title, x.Severity, x.Trigger, x.NotifyGroup, x.Channel, x.Status }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+
+        try { _data = await Api.ListAsync<AlertItem>(); }
+
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+
+
+    private async Task DeleteAsync(AlertItem x)
+
+    {
+        busy = true; error = null;
+
+        try { await Api.DeleteAsync<AlertItem>(x.Id); await LoadAsync(); }
+
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(AlertItem x) => model = (AlertItem)x.Copy();
+
+    private void Reset() => model = new();
+
+    private static readonly string[] SeverityOptions = { "Critical", "High", "Medium", "Low" };
+    private static readonly string[] TriggerOptions = { "Project delay", "Security issue", "Over-allocation", "Renewal expiry", "SLA breach" };
+    private static readonly string[] NotifyGroupOptions = { "IT Managers", "Security Team", "Service Desk", "Project Leads" };
+    private static readonly string[] ChannelOptions = { "Email and in-app", "Email", "In-app", "SMS" };
+    private static readonly string[] StatusOptions = { "New", "Seen", "Closed" };
+}

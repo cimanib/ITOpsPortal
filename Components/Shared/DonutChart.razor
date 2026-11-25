@@ -1,0 +1,28 @@
+@* Segmented ring built from stroked circles. Culture-invariant number output keeps SVG valid on comma-decimal locales. *@
+<svg class="donut" viewBox="0 0 200 200" role="img" aria-label="Ticket breakdown, @Total total">
+    @{ double offset = 0; }
+    @foreach (var b in Buckets)
+    {
+        var len = Total == 0 ? 0 : b.Count / (double)Total * Circumference;
+        var drawn = Math.Max(len - Gap, 0);
+        <circle cx="100" cy="100" r="@F(Radius)" fill="none" stroke="@b.Color" stroke-width="22"
+                stroke-dasharray="@F(drawn) @F(Circumference - drawn)"
+                stroke-dashoffset="@F(-offset)" transform="rotate(-90 100 100)">
+            <title>@b.Label: @b.Count</title>
+        </circle>
+        offset += len;
+    }
+    <text x="100" y="102" text-anchor="middle" class="donut-total">@Total</text>
+    <text x="100" y="124" text-anchor="middle" class="donut-label">Total Tickets</text>
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TicketBucket> Buckets { get; set; } = Array.Empty<TicketBucket>();
+
+    private const double Radius = 76;
+    private const double Circumference = 2 * Math.PI * Radius;
+    private const double Gap = 3;
+
+    private int Total => Buckets.Sum(b => b.Count);
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,109 @@
+@page "/renewals"
+@inject PortalApiClient Api
+
+<PageTitle>Renewals</PageTitle>
+<h1 class="page-title">Renewals</h1>
+<p class="page-sub">Track licences, support and subscriptions.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Renewal</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Item<InputText @bind-Value="model.Item" /><ValidationMessage For="() => model.Item" /></label>
+                <label>Type<InputSelect @bind-Value="model.Type">@foreach (var o in TypeOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Type" /></label>
+                <label>Vendor<InputText @bind-Value="model.Vendor" /><ValidationMessage For="() => model.Vendor" /></label>
+                <label>Renewal Date<InputDate @bind-Value="model.RenewalDate" /><ValidationMessage For="() => model.RenewalDate" /></label>
+                <label>Annual Cost (ZAR)<InputNumber @bind-Value="model.AnnualCost" /><ValidationMessage For="() => model.AnnualCost" /></label>
+                <label>Owner<InputSelect @bind-Value="model.Owner">@foreach (var o in OwnerOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Owner" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Upcoming Renewals</h2>
+            <input class="search" placeholder="Search..." aria-label="Search renewals" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Item</th><th>Vendor</th><th>Renewal Date</th><th>Days Left</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.Item</td><td>@r.Vendor</td><td>@r.RenewalDate.ToString("dd/MM/yyyy")</td><td>@r.DaysLeft days</td><td>@r.Status</td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>In 30 days</span><strong>@(items.Count(x => x.Status == "Expiring soon"))</strong></div>
+                <div><span>In 90 days</span><strong>@(items.Count(x => x.DaysLeft <= 90))</strong></div>
+                <div><span>Annual cost</span><strong>@("R" + items.Sum(x => x.AnnualCost).ToString("N0"))</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Renewal>? _data;
+    private Renewal model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<Renewal> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.Item, x.Type, x.Vendor, x.Owner }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<Renewal>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(Renewal x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<Renewal>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(Renewal x) => model = (Renewal)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] TypeOptions = { "Licence", "Support", "Subscription", "Domain" };
+    private static readonly string[] OwnerOptions = { "Michael Brown", "Sarah Johnson", "David Wilson", "Lisa Taylor", "Jane Smith", "John Smith" };
+}

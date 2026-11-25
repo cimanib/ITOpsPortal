@@ -1,0 +1,113 @@
+@page "/service-desk"
+@inject PortalApiClient Api
+
+<PageTitle>Service Desk</PageTitle>
+<h1 class="page-title">Service Desk</h1>
+<p class="page-sub">Log and manage service requests.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Service Request</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Request Reference<InputText @bind-Value="model.Reference" /><ValidationMessage For="() => model.Reference" /></label>
+                <label class="wide">Description<InputTextArea rows="3" @bind-Value="model.Description" /><ValidationMessage For="() => model.Description" /></label>
+                <label>Priority<InputSelect @bind-Value="model.Priority">@foreach (var o in PriorityOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Priority" /></label>
+                <label>Assigned Employee<InputSelect @bind-Value="model.AssignedTo">@foreach (var o in AssignedToOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.AssignedTo" /></label>
+                <label>Category<InputSelect @bind-Value="model.Category">@foreach (var o in CategoryOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Category" /></label>
+                <label>Status<InputSelect @bind-Value="model.Status">@foreach (var o in StatusOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Status" /></label>
+                <label>Due Date<InputDate @bind-Value="model.DueDate" /><ValidationMessage For="() => model.DueDate" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Service Requests</h2>
+            <input class="search" placeholder="Search..." aria-label="Search service desk" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Reference</th><th>Description</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Due Date</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.Reference</td><td>@r.Description</td><td>@r.Priority</td><td>@r.Status</td><td>@r.AssignedTo</td><td>@r.DueDate.ToString("dd/MM/yyyy")</td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Total</span><strong>@(items.Count)</strong></div>
+                <div><span>Open</span><strong>@(items.Count(x => x.Status == "Open"))</strong></div>
+                <div><span>In progress</span><strong>@(items.Count(x => x.Status == "In Progress"))</strong></div>
+                <div><span>Resolved</span><strong>@(items.Count(x => x.Status is "Resolved" or "Closed"))</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<ServiceRequest>? _data;
+    private ServiceRequest model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<ServiceRequest> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.Reference, x.Description, x.Priority, x.AssignedTo, x.Category, x.Status }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<ServiceRequest>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(ServiceRequest x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<ServiceRequest>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(ServiceRequest x) => model = (ServiceRequest)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] PriorityOptions = { "High", "Medium", "Low" };
+    private static readonly string[] AssignedToOptions = { "Michael Brown", "Sarah Johnson", "David Wilson", "Lisa Taylor", "Jane Smith", "John Smith" };
+    private static readonly string[] CategoryOptions = { "Network", "Hardware", "Software", "Access" };
+    private static readonly string[] StatusOptions = { "Open", "In Progress", "On Hold", "Resolved", "Closed" };
+}

@@ -1,0 +1,352 @@
+﻿@page "/reports"
+@using System.Globalization
+@using Microsoft.JSInterop
+@using ItOpsPortal.Services
+@inject PortalApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Dashboard Report Preview</PageTitle>
+
+<div class="report-page">
+    <div class="report-toolbar no-print">
+        <a href="/" class="report-back">← Back to Dashboard</a>
+
+        <div class="report-actions">
+            <button class="report-btn secondary"
+                    @onclick="LoadReport"
+                    disabled="@loading">
+                Refresh Preview
+            </button>
+
+            <button class="report-btn primary"
+                    @onclick="SaveAsPdf"
+                    disabled="@(loading || s is null)">
+                Save as PDF
+            </button>
+        </div>
+    </div>
+
+    @if (loading)
+
+    {
+        <p>Generating report preview...</p>
+    }
+
+    else if (error is not null)
+
+    {
+        <div class="alert-error" role="alert">
+            @error
+            <button @onclick="LoadReport">Try again</button>
+        </div>
+    }
+
+    else if (s is not null)
+
+    {
+        <article class="report-document">
+
+            <header class="report-heading">
+                <div>
+                    <h1>IT Operations Report</h1>
+                    <p>IT Operations Portal — Management Summary</p>
+                </div>
+
+                <div class="report-meta">
+                    <strong>Reporting period</strong>
+                    <span>@Range</span>
+                    <strong>Generated on</strong>
+                    <span>@DateTime.Now.ToString("dd MMM yyyy HH:mm")</span>
+                </div>
+            </header>
+
+            <hr />
+
+            <h2>1. Executive Summary</h2>
+            <p>
+                This report provides an overview of IT operations,
+                project delivery, service desk performance, security,
+                resource capacity and upcoming renewals.
+            </p>
+
+            <h2>2. Key Performance Indicators</h2>
+
+            <div class="report-kpis">
+                <div class="report-kpi">
+                    <span>Overall IT Health</span>
+                    <strong>@s.Health%</strong>
+                    <small>@HealthStatus</small>
+                </div>
+
+                <div class="report-kpi">
+                    <span>Projects</span>
+                    <strong>@s.Projects</strong>
+                    <small>@s.ProjectsAtRisk at risk</small>
+                </div>
+
+                <div class="report-kpi">
+                    <span>Service Desk Tickets</span>
+                    <strong>@s.ServiceDeskTotal</strong>
+                    <small>@s.SlaCompliance% SLA compliance</small>
+                </div>
+
+                <div class="report-kpi">
+                    <span>Critical Security Issues</span>
+                    <strong>@s.CriticalIssues</strong>
+                </div>
+
+                <div class="report-kpi">
+                    <span>Overloaded Resources</span>
+                    <strong>@s.Overloaded</strong>
+                </div>
+
+                <div class="report-kpi">
+                    <span>Upcoming Renewals</span>
+                    <strong>@s.RenewalsExpiring</strong>
+                    <small>Within 30 days</small>
+                </div>
+            </div>
+
+            <h2>3. Project Overview</h2>
+
+            @if (projects.Count == 0)
+
+            {
+                <p>No projects are available for this report.</p>
+            }
+
+            else
+
+            {
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>Owner</th>
+                            <th>Progress</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in projects)
+
+                        {
+                            <tr>
+                                <td>@p.Name</td>
+                                <td>@p.Owner</td>
+                                <td>@p.Progress%</td>
+                                <td>@p.Status</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <h2>4. Service Desk Summary</h2>
+
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Ticket Status</th>
+                        <th>Number of Tickets</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Open</td><td>@s.Open</td></tr>
+                    <tr><td>In Progress</td><td>@s.InProgress</td></tr>
+                    <tr><td>On Hold</td><td>@s.OnHold</td></tr>
+                    <tr><td>Resolved</td><td>@s.Resolved</td></tr>
+                    <tr class="report-total">
+                        <td>Total Tickets</td>
+                        <td>@s.ServiceDeskTotal</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>5. Alerts and Risks</h2>
+
+            @if (alerts.Count == 0)
+
+            {
+                <p>No alerts are currently recorded.</p>
+            }
+
+            else
+
+            {
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>Alert</th>
+                            <th>Trigger</th>
+                            <th>Severity</th>
+                            <th>Date Raised</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in alerts.OrderByDescending(x => x.RaisedOn))
+
+                        {
+                            <tr>
+                                <td>@a.Title</td>
+                                <td>@a.Trigger</td>
+                                <td>@a.Severity</td>
+                                <td>@a.RaisedOn.ToString("dd MMM yyyy HH:mm")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <footer class="report-footer">
+                <span>IT Operations Portal</span>
+                <span>Confidential — Internal Use</span>
+            </footer>
+
+        </article>
+    }
+</div>
+
+@code {
+    private DashboardSummary? s;
+
+    private List<Project> projects = new();
+
+    private List<AlertItem> alerts = new();
+
+    private bool loading = true;
+
+    private string? error;
+
+
+
+    private string HealthStatus =>
+
+        s is null ? "Unknown" :
+
+        s.Health >= 85 ? "Healthy" :
+
+        s.Health >= 60 ? "Needs attention" : "Critical";
+
+
+
+
+
+
+
+    private static DateTime ReportEndDate => DateTime.Today;
+
+    private static DateTime ReportStartDate => DateTime.Today;
+
+    private static string Range
+
+    {
+
+        get
+
+        {
+
+            var ci = CultureInfo.InvariantCulture;
+
+
+
+            return $"{ReportStartDate.ToString("d MMM", ci)} – " +
+
+                   $"{ReportEndDate.ToString("d MMM yyyy", ci)}";
+
+        }
+
+    }
+
+
+
+
+
+    protected override async Task OnInitializedAsync()
+
+    {
+
+        await LoadReport();
+
+    }
+
+
+
+    private async Task LoadReport()
+
+    {
+
+        loading = true;
+
+        error = null;
+
+
+
+        try
+
+        {
+
+            var summaryTask = Api.GetDashboardAsync();
+
+            var projectsTask = Api.ListAsync<Project>();
+
+            var alertsTask = Api.ListAsync<AlertItem>();
+
+
+
+            await Task.WhenAll(
+
+                summaryTask, projectsTask, alertsTask);
+
+
+
+            s = await summaryTask;
+
+            projects = await projectsTask;
+
+            alerts = await alertsTask;
+
+        }
+
+        catch (ApiException ex)
+
+        {
+
+            error = ex.Message;
+
+        }
+
+        catch (Exception)
+
+        {
+
+            error = "Unable to generate the report. Please try again.";
+
+        }
+
+        finally
+
+        {
+
+            loading = false;
+
+        }
+
+    }
+
+
+
+    private async Task SaveAsPdf()
+
+    {
+
+        if (s is null)
+
+            return;
+
+
+
+        await JS.InvokeVoidAsync("window.print");
+
+    }
+}

@@ -1,0 +1,23 @@
+<article class="kpi">
+    <div class="kpi-main">
+        <span class="kpi-icon tint-@Kpi.Tint"><Icon Name="@Kpi.Icon" Size="26" /></span>
+        <div>
+            <div class="kpi-title">@Kpi.Title</div>
+            <div class="kpi-value">
+                <strong>@Kpi.Value</strong>
+                <StatusBadge Status="Kpi.Status" />
+            </div>
+        </div>
+    </div>
+    <div class="kpi-foot @Kpi.Tone.ToString().ToLowerInvariant()">
+        @if (Kpi.Tone == FootnoteTone.Negative)
+        {
+            <Icon Name="arrow-down" Size="11" />
+        }
+        <span>@Kpi.Footnote</span>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public KpiItem Kpi { get; set; } = default!;
+}

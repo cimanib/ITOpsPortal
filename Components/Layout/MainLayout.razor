@@ -1,0 +1,138 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using ITOpsPortal.Services
+@inject PortalApiClient Api
+@inject NavigationManager Nav
+
+<div class="shell">
+    <NavMenu />
+
+    <div class="main">
+        <header class="topbar">
+            <strong>@portalName</strong>
+
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    <div class="user-profile">
+                        <div class="user-avatar">
+                            @GetInitials(UserDisplay.Name(auth.User))
+                        </div>
+
+                        <div class="user-details">
+                            <span class="user-name">
+                                @UserDisplay.Name(auth.User)
+                            </span>
+
+                            <span class="user-status">
+                                <span class="status-dot"></span>
+                                Online
+                            </span>
+                        </div>
+
+                        <a class="sign-out" href="auth/logout">
+                            Sign out
+                        </a>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+        </header>
+
+        <main>@Body</main>
+    </div>
+</div>
+
+@code {
+    private string portalName = "IT Operations Portal";
+
+
+
+    private static string GetInitials(string? name)
+
+    {
+
+        if (string.IsNullOrWhiteSpace(name))
+
+            return "U";
+
+
+
+        var parts = name.Split(
+
+            ' ',
+
+            StringSplitOptions.RemoveEmptyEntries);
+
+
+
+        if (parts.Length == 1)
+
+            return parts[0][..1].ToUpperInvariant();
+
+
+
+        return $"{char.ToUpperInvariant(parts[0][0])}" +
+
+               $"{char.ToUpperInvariant(parts[^1][0])}";
+
+    }
+
+
+
+    protected override async Task OnInitializedAsync()
+
+    {
+
+        Nav.LocationChanged += OnLocationChanged;
+
+        await RefreshAsync();
+
+    }
+
+
+
+    private async void OnLocationChanged(
+
+        object? sender,
+
+        LocationChangedEventArgs e)
+
+    {
+
+        await RefreshAsync();
+
+        await InvokeAsync(StateHasChanged);
+
+    }
+    private async Task RefreshAsync()
+
+    {
+
+        try
+
+        {
+
+            portalName = (await Api.GetSettingsAsync()).PortalName;
+
+        }
+
+        catch (ApiException)
+
+        {
+
+            // Keep the default name if the API is unavailable.
+
+        }
+
+    }
+
+
+
+    public void Dispose()
+
+    {
+
+        Nav.LocationChanged -= OnLocationChanged;
+
+    }
+}

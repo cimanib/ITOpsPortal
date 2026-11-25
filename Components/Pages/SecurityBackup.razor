@@ -1,0 +1,111 @@
+@page "/security/backup"
+@inject PortalApiClient Api
+
+<PageTitle>Security Backup</PageTitle>
+<h1 class="page-title">Security Backup</h1>
+<p class="page-sub">Configure backup jobs and review their status.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Backup Job</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Job Name<InputText @bind-Value="model.JobName" /><ValidationMessage For="() => model.JobName" /></label>
+                <label>Source<InputSelect @bind-Value="model.Source">@foreach (var o in SourceOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Source" /></label>
+                <label>Destination<InputSelect @bind-Value="model.Destination">@foreach (var o in DestinationOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Destination" /></label>
+                <label>Frequency<InputSelect @bind-Value="model.Frequency">@foreach (var o in FrequencyOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Frequency" /></label>
+                <label>Retention (days)<InputNumber @bind-Value="model.RetentionDays" /><ValidationMessage For="() => model.RetentionDays" /></label>
+                <label>Encryption<InputSelect @bind-Value="model.Encryption">@foreach (var o in EncryptionOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Encryption" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Backup Status</h2>
+            <input class="search" placeholder="Search..." aria-label="Search security backup" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Job</th><th>Last Run</th><th>Size</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.JobName</td><td>@r.LastRun.ToString("dd/MM/yyyy HH:mm")</td><td>@(r.SizeGb >= 1000 ? $"{r.SizeGb / 1000.0:0.0} TB" : $"{r.SizeGb} GB")</td><td><StatusPill Text="@r.Status" /></td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Backup jobs</span><strong>@(items.Count)</strong></div>
+                <div><span>Failed</span><strong>@(items.Count(x => x.Status == "Failed"))</strong></div>
+                <div><span>Success rate</span><strong>@((items.Count == 0 ? 0 : items.Count(x => x.Status == "Success") * 100 / items.Count) + "%")</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<BackupJob>? _data;
+    private BackupJob model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<BackupJob> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.JobName, x.Source, x.Destination, x.Frequency, x.Encryption }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<BackupJob>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(BackupJob x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<BackupJob>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(BackupJob x) => model = (BackupJob)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] SourceOptions = { "Core Servers", "Databases", "File Shares", "Email Archive" };
+    private static readonly string[] DestinationOptions = { "Offsite Cloud Storage", "Local Repository", "Immutable Archive" };
+    private static readonly string[] FrequencyOptions = { "Hourly", "Daily at 02:00", "Daily at 23:00", "Weekly" };
+    private static readonly string[] EncryptionOptions = { "AES-256", "AES-128", "None" };
+}

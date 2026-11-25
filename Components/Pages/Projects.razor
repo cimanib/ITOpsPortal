@@ -1,0 +1,110 @@
+@page "/projects"
+@inject PortalApiClient Api
+
+<PageTitle>Projects</PageTitle>
+<h1 class="page-title">Projects</h1>
+<p class="page-sub">Create, edit and track IT projects.</p>
+
+@if (error is not null)
+{
+    <div class="alert-error" role="alert"><span>@error</span> <button type="button" class="link" @onclick="() => error = null">Dismiss</button></div>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>@(model.Id == 0 ? "Create" : "Edit") Project</h2>
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <label>Project Name<InputText @bind-Value="model.Name" /><ValidationMessage For="() => model.Name" /></label>
+                <label>Owner<InputSelect @bind-Value="model.Owner">@foreach (var o in OwnerOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Owner" /></label>
+                <label>Start Date<InputDate @bind-Value="model.StartDate" /><ValidationMessage For="() => model.StartDate" /></label>
+                <label>Target Date<InputDate @bind-Value="model.TargetDate" /><ValidationMessage For="() => model.TargetDate" /></label>
+                <label>Status<InputSelect @bind-Value="model.Status">@foreach (var o in StatusOptions) { <option value="@o">@o</option> }</InputSelect><ValidationMessage For="() => model.Status" /></label>
+                <label>Progress (%)<InputNumber @bind-Value="model.Progress" /><ValidationMessage For="() => model.Progress" /></label>
+                <label>Budget (ZAR)<InputNumber @bind-Value="model.Budget" /><ValidationMessage For="() => model.Budget" /></label>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn" @onclick="Reset">Cancel</button>
+                <button type="submit" class="btn primary" disabled="@busy">Save</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Project List</h2>
+            <input class="search" placeholder="Search..." aria-label="Search projects" @bind="search" @bind:event="oninput" />
+        </div>
+        @if (_data is null)
+        {
+            <p class="muted">Loading...</p>
+        }
+        else
+        {
+            var items = _data;
+            <div class="table-wrap"><table>
+                <thead><tr><th>Project</th><th>Owner</th><th>Progress</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows)
+                    {
+                        <tr><td>@r.Name</td><td>@r.Owner</td><td><div class="bar"><i style="width:@(r.Progress)%"></i></div> @r.Progress%</td><td>@r.Status</td>
+                            <td class="row-actions"><button class="link" @onclick="() => Edit(r)">Edit</button> <button class="link danger" disabled="@busy" @onclick="() => DeleteAsync(r)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="kpis">
+                <div><span>Total</span><strong>@(items.Count)</strong></div>
+                <div><span>At risk</span><strong>@(items.Count(x => x.Status == "At Risk"))</strong></div>
+                <div><span>Delayed</span><strong>@(items.Count(x => x.Status == "Delayed"))</strong></div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Project>? _data;
+    private Project model = new();
+    private string search = "";
+    private string? error;
+    private bool busy;
+
+    private IEnumerable<Project> Rows => (_data ?? new()).Where(x => string.IsNullOrWhiteSpace(search) ||
+        string.Join(" ", new[] { x.Name, x.Owner, x.Status }).Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _data = await Api.ListAsync<Project>(); }
+        catch (ApiException ex) { error = ex.Message; _data ??= new(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (model.Id == 0) await Api.CreateAsync(model); else await Api.UpdateAsync(model);
+            model = new();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(Project x)
+    {
+        busy = true; error = null;
+        try { await Api.DeleteAsync<Project>(x.Id); await LoadAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(Project x) => model = (Project)x.Copy();
+    private void Reset() => model = new();
+
+    private static readonly string[] OwnerOptions = { "Michael Brown", "Sarah Johnson", "David Wilson", "Lisa Taylor", "Jane Smith", "John Smith" };
+    private static readonly string[] StatusOptions = { "On Track", "At Risk", "Delayed" };
+}

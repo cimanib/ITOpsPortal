@@ -1,0 +1,17 @@
+<section class="card @Class">
+    <header class="card-head">
+        <h2>@Title</h2>
+        @if (!string.IsNullOrEmpty(ActionText))
+        {
+            <button type="button" class="btn-ghost">@ActionText</button>
+        }
+    </header>
+    <div class="card-body">@ChildContent</div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? ActionText { get; set; } = "View all";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
